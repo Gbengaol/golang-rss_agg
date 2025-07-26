@@ -18,45 +18,57 @@ type apiConfig struct {
 }
 
 func main() {
-		// Load environmenr variables from .env file
-		godotenv.Load(".env")
+	// Load environment variables from .env file
+	godotenv.Load(".env")
 
-		portString := os.Getenv("PORT")
-		if portString == "" {
-			log.Fatal("PORT is not found in environment")
-		}
+	portString := os.Getenv("PORT")
+	if portString == "" {
+		log.Fatal("PORT is not found in environment")
+	}
 
-		dbURL := os.Getenv("DB_URL")
-		if dbURL == "" {
-			log.Fatal("DB_URL is not found in environment")
-		}
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		log.Fatal("DB_URL is not found in environment")
+	}
 
-		conn, err := sql.Open("postgres", dbURL)
-		if err != nil {
-			log.Fatal("Cannot connect to database", err)
-		}
+	conn, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatal("Cannot connect to database", err)
+	}
 
-		apiCfg := apiConfig{
-			DB: database.New(conn),
-		}
+	apiCfg := apiConfig{
+		DB: database.New(conn),
+	}
 
-		router := chi.NewRouter()
-		router.Use(cors.Handler(cors.Options{
-			AllowedOrigins: []string{"https://*", "http://*"},
-			AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-			AllowedHeaders: []string{"*"},
-			ExposedHeaders: []string{"Link"},
-			AllowCredentials: false,
-			MaxAge: 300,
-		}))
+	router := chi.NewRouter()
+	router.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"https://*", "http://*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"*"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
 
-		v1Router := chi.NewRouter()
-		v1Router.Get("/healthz", handlerReadiness)
-		v1Router.Get("/err", handlerError)
-		v1Router.Post("/users", apiCfg.handlerCreateUser)
+	v1Router := chi.NewRouter()
+	v1Router.Get("/healthz", handlerReadiness)
+	v1Router.Get("/err", handlerError)
 
-		router.Mount("/v1", v1Router)
+	// Users
+	v1Router.Post("/users", apiCfg.handlerCreateUser)
+	v1Router.Get("/users", apiCfg.middlewareAuth(apiCfg.handlerGetUser))
 
-		log.Println("Server is running on port", portString)
-		http.ListenAndServe(":"+portString, router)
+	// Feeds
+	v1Router.Get("/feeds", apiCfg.handlerGetFeeds)
+	v1Router.Post("/feeds", apiCfg.middlewareAuth(apiCfg.handlerCreateFeed))
+
+	// Feed Follows
+	v1Router.Get("/feed_follows", apiCfg.middlewareAuth(apiCfg.handlerGetFeedFollows))
+	v1Router.Post("/feed_follows", apiCfg.middlewareAuth(apiCfg.handlerCreateFeedFollow))
+	v1Router.Delete("/feed_follows/{FeedFollowID}", apiCfg.middlewareAuth(apiCfg.handlerDeleteFeedFollow))
+
+	router.Mount("/v1", v1Router)
+
+	log.Println("Server is running on port", portString)
+	http.ListenAndServe(":"+portString, router)
 }
